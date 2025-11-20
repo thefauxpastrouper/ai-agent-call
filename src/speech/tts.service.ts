@@ -47,6 +47,7 @@ export class TTSService {
         
         // Parse error response if it's a buffer or string
         let errorMessage = '';
+        let errorStatus = '';
         if (errorData) {
           if (Buffer.isBuffer(errorData)) {
             try {
@@ -59,8 +60,14 @@ export class TTSService {
           if (typeof errorData === 'object' && errorData.detail) {
             if (typeof errorData.detail === 'string') {
               errorMessage = errorData.detail;
-            } else if (errorData.detail.message) {
-              errorMessage = errorData.detail.message;
+            } else {
+              // Extract message and status from detail object
+              if (errorData.detail.message) {
+                errorMessage = errorData.detail.message;
+              }
+              if (errorData.detail.status) {
+                errorStatus = errorData.detail.status;
+              }
             }
           } else if (typeof errorData === 'string') {
             errorMessage = errorData;
@@ -72,16 +79,20 @@ export class TTSService {
           statusText,
           message: error.message,
           apiMessage: errorMessage || undefined,
+          apiStatus: errorStatus || undefined,
           errorData: typeof errorData === 'object' ? JSON.stringify(errorData) : errorData,
           url: error.config?.url
         });
         
         // Log specific error messages for common issues
         if (status === 401) {
-          if (errorMessage.includes('model_deprecated') || errorMessage.includes('free tier')) {
+          const lowerMessage = errorMessage.toLowerCase();
+          if (errorStatus === 'detected_unusual_activity' || lowerMessage.includes('unusual activity') || lowerMessage.includes('free tier usage disabled')) {
+            logger.error("TTS Error: ElevenLabs has detected unusual activity and disabled free tier usage. This may be due to VPN/proxy usage or account abuse detection. Consider using a paid plan or contacting ElevenLabs support.");
+          } else if (errorStatus === 'model_deprecated_free_tier' || lowerMessage.includes('model_deprecated') || (lowerMessage.includes('free tier') && lowerMessage.includes('model'))) {
             logger.error("TTS Error: Model is deprecated or not available on your tier. The model has been updated to eleven_turbo_v2_5");
           } else {
-            logger.error("TTS Error: Invalid API key. Please check ELEVENLABS_API_KEY");
+            logger.error("TTS Error: Authentication failed (401). Please check ELEVENLABS_API_KEY is valid and has proper permissions");
           }
         } else if (status === 404) {
           logger.error("TTS Error: Voice ID not found. Please check ELEVENLABS_VOICE_ID");
